@@ -27,7 +27,6 @@ function CustomPagination() {
   );
 }
 function QuickSearchToolbar(props) {
-  
   return (
     <div className='p-10 border-b flex justify-between'>
       <div className='flex items-center'>
@@ -84,22 +83,22 @@ function QuickSearchToolbar(props) {
     </div>
   );
 }
-
-
 function Clients(props) {
   const classes = useStyles();
   const [selectedTab, setSelectedTab] = useState(0);
 
   const handleTabChange = (event, value) => {
     setSelectedTab(value);
+    setSearchGroup('all')
+    requestSearch('')
   };
 
   function handleOnClick(rowData) {
-    console.log("click ID = " + rowData.id);
+    // console.log("click ID = " + rowData.id);
     props.history.push(`/apps/clientmanager/client/${rowData.id}`);
   }
   function handleOnClickWrite() {
-    props.history.push(`/apps/clientmanager/write`);
+    props.history.push(`/apps/clientmanager/write/new`);
   }
   const [hoveredRow, setHoveredRow] = useState(null);
   const onMouseEnterRow = (event) => {
@@ -114,9 +113,9 @@ function Clients(props) {
     { field: 'id', headerName: 'ID', width: 70 },
     { field: 'franchise', headerName: '프랜차이즈', minWidth: 160 },
     { field: 'comName', headerName: '업체명', minWidth: 240 },
-    { field: 'ea', headerName: '서비스 수량', width: 120},
+    { field: 'serviceCount', headerName: '서비스 수량', width: 120},
     { field: 'startDate', headerName: '서비스 생성일', width: 160},
-    { field: 'endData', headerName: '서비스 종료일', width: 160},
+    { field: 'endDate', headerName: '서비스 종료일', width: 160},
     {
       field: "actions",
       headerName: "",
@@ -132,10 +131,16 @@ function Clients(props) {
                 alignItems: "start"
               }}
             >
-              <IconButton onClick={() => console.log(params.id)}>
+              <IconButton onClick={(event) => {
+                event.stopPropagation();
+                props.history.push(`/apps/clientmanager/write/${params.id}`);
+              }}>
                 <span className="material-icons">edit</span>
               </IconButton>
-              <IconButton onClick={() => console.log(params.id)}>
+              <IconButton onClick={(event) => {
+                event.stopPropagation();
+                console.log(params.id)
+              }}>
                 <span className="material-icons">delete</span>
               </IconButton>
             </Box>
@@ -143,34 +148,58 @@ function Clients(props) {
         }
       }
   ];
-  const [data, setData] = useState({
-    rows : [],
-  });
+  const [origindata, setOrigindata] = useState({rows : []})
+  const [data, setData] = useState({rows : []});
   const [rows, setRows] = useState(data.rows)
   const [searchGroup, setSearchGroup] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [rowcount, setRowcount] = useState(0)
   
   useEffect(() => {
-    // const getApidata = async () => {
-    //   const apidata = await axios.post('/api/master/com/list')
+    // axios.post('/api/master/com/list')
+    // .then((response) => {
     //   const copyarr = [];
-    //     copyarr.rows = [...apidata.data];
+    //     copyarr.rows = [...response.data];
     //     setData(copyarr)
-    // }
-    // getApidata();
+    // })
+  }, [])
+  useEffect(()=>{
     axios.post('/api/master/com/list')
     .then((response) => {
       const copyarr = [];
         copyarr.rows = [...response.data];
+        const filteredTab = copyarr.rows.filter((value) => {
+          if(selectedTab===0)  {
+            return true;
+          } else if(selectedTab===1 && value.franchise === 'Y')  {
+            return true;
+          } else if(selectedTab===2 && value.franchise === 'N')  {
+            return true;
+          }
+          });
+          copyarr.rows = filteredTab
+          
         setData(copyarr)
     })
-  }, [])
-  
+  }, [selectedTab])
+
   useEffect(() => {
+    const copyarr = data.rows;
+    //copyarr = copyarr.filter(isFranchise(selectedTab))
     setRows(data.rows)
   }, [data])
   
+  // function isFranchise(selectedTab)  {
+  //   if(selectedTab===0)  {
+  //     return true;
+  //   } else if(selectedTab===1 && rows.franchise === 'Y')  {
+  //     return true;
+  //   } else if(selectedTab===2 && rows.franchise === 'N')  {
+  //     return true;
+  //   }
+
+  // }
+  //텍스트 검색
   const requestSearch = (searchValue) => {
     setSearchText(searchValue);
     const searchRegex = new RegExp(escapeRegExp(searchValue), 'i');
@@ -181,12 +210,15 @@ function Clients(props) {
     });
     setRows(filteredRows);
   };
+  //검색 필드
   const handleSearchGroupChange = (event) => {
     setSearchGroup(event.target.value);
   };
+
   useEffect(()=>{
     setRowcount(rows.length);
   },[rows])
+
   useEffect(()=>{
     requestSearch(searchText);
   },[searchGroup])

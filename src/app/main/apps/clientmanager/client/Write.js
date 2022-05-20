@@ -1,7 +1,7 @@
 import FusePageCarded from '@fuse/core/FusePageCarded';
-import {Button, MenuItem, Modal, Box, TextField } from '@material-ui/core';
+import {Button, MenuItem, Modal, Box, TextField, Select, Switch } from '@material-ui/core';
 import { makeStyles } from '@material-ui/core/styles';
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ClientHeeader from './ClientHeader'
 import DaumPostcode from 'react-daum-postcode';
 import { DatePicker, MuiPickersUtilsProvider } from '@material-ui/pickers';
@@ -9,6 +9,19 @@ import 'react-date-range/dist/styles.css'; // main css file
 import 'react-date-range/dist/theme/default.css'; // theme css file
 import DateFnsUtils from '@date-io/date-fns';
 import koLocale from "date-fns/locale/ko";
+// import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { useHistory, useParams } from 'react-router';
+import reducer from '../store';
+import axios from 'axios';
+import { getClient, newClient } from '../store/clientSlice';
+import { Controller, useForm, useFormContext } from 'react-hook-form';
+import { useDispatch, useSelector } from 'react-redux';
+import { useDeepCompareEffect } from '@fuse/hooks';
+import withReducer from 'app/store/withReducer';
+import FuseLoading from '@fuse/core/FuseLoading';
+import * as yup from 'yup';
+import { yupResolver } from '@hookform/resolvers/yup';
+
 
 const useStyles = makeStyles({
   layoutRoot: {
@@ -16,14 +29,74 @@ const useStyles = makeStyles({
   },  
 });
 
+const schema = yup.object().shape({
+  comName: yup.string().required('업체명을 입력해야 합니다.')
+  .matches(/^[ㄱ-ㅎ가-힣a-zA-Z0-9\s]+$/,"업체명은 한글/영문/숫자만 입력 가능합니다.")
+  .min(2, '이름은 최소 2글자 이상 입력해야 합니다.'),
+  franchise: yup.string().required('프랜차이즈 여부를 선택해야 합니다.'),
+  sector: yup.string().required('업종을 입력해야 합니다..'),
+  tel: yup.string()
+  .required('전화번호를 입력해야 합니다.')
+  .min(10, '전화번호는 최소 10글자로 입력해야 합니다.')
+  .matches(
+    /^((\\+[1-9]{1,4})|(\\([0-9]{2,3}\\))|([0-9]{2,4}))*?[0-9]{3,4}?[0-9]{3,4}?$/,"올바른 형식의 번호를 입력해야 합니다.(숫자만 입력)"),
+});
 
 
 
-function Write() {
-  const classes = useStyles();
+function Write(props) {
+  const dispatch = useDispatch();
+  //const client = useSelector(({ state }) => state.client);
+  const client = useSelector(({ clientmanager }) => clientmanager.client);
   
-  const brfilerRef=useRef();
-  // const { reset, watch, control, onChange, formState } = methods;
+  // function handleSaveProduct() {
+  //   dispatch(saveProduct(getValues()));
+  // }
+
+
+  const classes = useStyles();
+  const clientId = useParams();
+  const [noClient, setNoClient] = useState(false);
+  const [addSearchOpen, setaddSearchOpen] = useState(false);
+  const {register, control, formState, handleSubmit, reset, setError, watch, setValue } = useForm({
+    mode: 'onChange',
+    defaultValues: {},
+    resolver: yupResolver(schema),
+  });
+  const { isValid, dirtyFields, errors } = formState;
+  
+  const form = register();
+  
+  
+  useDeepCompareEffect(()=>{
+    function updateClientState() {
+      if (clientId.clientId === 'new') {
+        /**
+         * Create New Product data
+         */
+        dispatch(newClient());
+      } else {
+
+        dispatch(getClient(clientId.clientId)).then((action) => {
+          if (!action.payload) {
+            setNoProduct(true);
+          }
+        })
+      }
+    }
+    updateClientState();
+  }, [dispatch, clientId.clientId]);
+  useEffect(() => {
+    if (!client) {
+      return;
+    }
+    /**
+     * Reset the form on product state changes
+     */
+    reset(client);
+  }, [client, reset]);
+
+  
   // const form = watch();
 
   function handleOnClick(rowData) {
@@ -31,15 +104,14 @@ function Write() {
     props.history.push(`/apps/e-commerce/products/${item.id}/${item.handle}`);
     
   }
+
+
   
-  const [addSearchOpen, setaddSearchOpen] = useState(false);
-  const addDetailRef = useRef();
   const handleaddSearchOpen = () => {
     setaddSearchOpen(true);
   }
   const handleaddSearchClose = () => setaddSearchOpen(false);
-  const [address, setAddress] = useState(''); // 주소
-  const [addressDetail, setAddressDetail] = useState(''); // 상세주소
+
   const onChangeOpenPost = () => setaddSearchOpen(!addSearchOpen);
   const onCompletePost = (data) => {
     let fullAddr = data.address;
@@ -54,13 +126,10 @@ function Write() {
       }
       fullAddr += extraAddr !== '' ? ` (${extraAddr})` : '';
     }
-
-    setAddress(data.zonecode);
-    setAddressDetail(fullAddr);
+    setValue('zipcode', data.zonecode);
+    setValue('address', fullAddr);    
     setaddSearchOpen(false);
-    addDetailRef.current.focus();
   };
-  const [value, setValue] = useState(new Date());
   const [brfileName, setbrfileName] = useState('');
   const [deleteOpen, setdeleteOpen] = useState(false);
 
@@ -83,27 +152,83 @@ function Write() {
     boxShadow: 24,
     p: 4,
   };
+  if (noClient) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { delay: 0.1 } }}
+        className="flex flex-col flex-1 items-center justify-center h-full"
+      >
+        <Typography color="textSecondary" variant="h5">
+          There is no such product!
+        </Typography>
+        <Button
+          className="mt-24"
+          component={Link}
+          variant="outlined"
+          to="/apps/e-commerce/products"
+          color="inherit"
+        >
+          Go to Products Page
+        </Button>
+      </motion.div>
+    );
+  }
  
-
+  if (!client && clientId.clientId !== 'new') return <FuseLoading />;
+    // _.isEmpty(form) || (client && clientId.clientId !== client.id && clientId.clientId !== 'new')
+ 
   return (
     <FusePageCarded
       classes={{
         root: classes.layoutRoot,
       }}
       header={
-        <ClientHeeader title='신규 업체 등록'></ClientHeeader>
+        <ClientHeeader title={clientId.clientId !== 'new' ? '업체정보 변경' : '신규업체 등록'}></ClientHeeader>
       }
       content={
         <div className="p-24">
           <form className='w-1/2'>
             <div className='mb-20'>
-              <TextField id="" label="업체명" variant="outlined" className='w-full'/>
+            <Controller
+              name="comName"
+              control={control}
+              defaultValue={[]}
+              render={({ field }) => (
+                <TextField 
+                  {...field}
+                  id="comName"
+                  label="업체명"
+                  variant="outlined"
+                  required
+                  className='w-full'
+                  error={!!errors.comName}
+                  helperText={errors?.comName?.message}
+                />
+              )}
+            />
             </div>
             <div className='mb-20'>
-              <TextField id="" select label="프랜차이즈 여부" variant="outlined" className='w-full'>
-                <MenuItem value='개인'>개인</MenuItem>
-                <MenuItem value='프랜차이즈'>프랜차이즈</MenuItem>
-              </TextField>
+              <Controller
+                name="franchise"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                <TextField 
+                  {...field}
+                  id="franchise"
+                  label="프랜차이즈 여부"
+                  variant="outlined"
+                  className='w-full'
+                  select
+                  error={!!errors.franchise}
+                  helperText={errors?.franchise?.message}
+                  >
+                  <MenuItem value='Y'>프랜차이즈</MenuItem>
+                  <MenuItem value='N'>개인</MenuItem>
+                </TextField>
+                )}
+              />
             </div>
             <div className='mb-20 flex'>
               <input accept="image/*, .pdf" className='hidden' id="raised-button-file" multiple type="file" 
@@ -113,17 +238,91 @@ function Write() {
               <TextField id="file" label="사업자등록증" variant="outlined" InputProps={{readOnly: true}} value={brfileName}  className='flex-grow' onClick={() => document.getElementById('raised-button-file').click()}/>
             </div>
             <div className='mb-20'>
-              <TextField id="" label="업종" variant="outlined" className='w-full'/>
+              <Controller
+                name="sector"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                  <TextField 
+                  {...field}
+                  id="sector"
+                  label="업종"
+                  variant="outlined"
+                  className='w-full'
+                  error={!!errors.sector}
+                  helperText={errors?.sector?.message}
+                  />
+                )}
+                />
             </div>
             <div className='mb-20'>
-              <TextField id="" label="연락처" variant="outlined" className='w-full'/>
+            <Controller
+                name="tel"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                  <TextField 
+                  {...field}
+                  id="tel"
+                  label="전화번호"
+                  variant="outlined"
+                  className='w-full'
+                  error={!!errors.tel}
+                  helperText={errors?.tel?.message}
+                  />
+                )}
+                />
             </div>
             <div className='mb-20'>
               <div className='flex items-center mb-10'>
-                <TextField id="add_zip" label="우편번호" variant="outlined" InputProps={{readOnly: true}} value={address} onClick={handleaddSearchOpen} className='mr-10'/>
-                <TextField id="add_address" label="주소" variant="outlined" InputProps={{readOnly: true}} value={addressDetail} onClick={handleaddSearchOpen} className='w-full'/>
+                <Controller
+                  name="zipcode"
+                  control={control}
+                  defaultValue={[]}
+                  render={({ field }) => (
+                    <TextField 
+                    {...field}
+                    onClick={handleaddSearchOpen}
+                    id="zipcode"
+                    label="우편번호"
+                    variant="outlined"
+                    className='mr-10'
+                    InputProps={{readOnly: true}}
+                    />
+                  )}
+                />
+                  <Controller
+                    name="address"
+                    control={control}
+                    defaultValue={[]}
+                    render={({ field }) => (
+                      <TextField 
+                      {...field}
+                      onClick={handleaddSearchOpen}
+                      id="address"
+                      label="주소"
+                      variant="outlined"
+                      className='w-full'
+                      InputProps={{readOnly: true}}
+                      />
+                    )}
+                  />
               </div>
-              <TextField id="add_detail" label="상세주소" variant="outlined" inputRef={(ref) => (addDetailRef.current = ref)}  className='w-full'/>
+              <Controller
+                name="address2"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                  <TextField 
+                  {...field}
+                  id="address2"
+                  label="상세주소"
+                  variant="outlined"
+                  className='w-full'
+                  InputProps={{readOnly: true}}
+                  />
+                )}
+              />
               <Modal
                   open={addSearchOpen}
                   onClose={handleaddSearchClose}
@@ -135,31 +334,70 @@ function Write() {
                   </Box>
                 </Modal>
             </div>
+            <div className='mb-20'>
+              <Controller
+                name="serviceCheck"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
+                <TextField 
+                  {...field}
+                  id="serviceCheck"
+                  label="서비스 이용유무"
+                  variant="outlined"
+                  className='w-full'
+                  select
+                  error={!!errors.serviceCheck}
+                  helperText={errors?.serviceCheck?.message}
+                  >
+                  <MenuItem value='Y'>이용중</MenuItem>
+                  <MenuItem value='N'>이용하지 않음</MenuItem>
+                </TextField>
+                )}
+              />
+            </div>
             <div className='mb-20 flex'>
               <MuiPickersUtilsProvider utils={DateFnsUtils} locale={koLocale} className=''>
+              <Controller
+                name="startDate"
+                control={control}
+                defaultValue={[]}
+                render={({ field }) => (
                 <DatePicker
+                  {...field}
+                  id='startDate'
                   label='서비스 시작일'
-                  value={value}
                   inputVariant="outlined"
-                  onChange={(newValue) => setValue(newValue)}
+                  format="yyyy-MM-dd"
+                  // onChange={(value) => setValue('startDate',value)}
                   // renderInpu={(params) => <TextField {...params} variant="outlined"/>}
                   className='mr-10 flex-grow'
                   />
-                  <DatePicker
-                  label='서비스 종료일'
-                  value={value}
-                  inputVariant="outlined"
-                  onChange={(newValue) => setValue(newValue)}
-                  // renderInpu={(params) => <TextField {...params} variant="outlined"/>}
-                  className='flex-grow'
-                  />
+                )}
+              />
+                <Controller
+                  name="endDate"
+                  control={control}
+                  defaultValue={[]}
+                  render={({ field }) => (
+                    <DatePicker
+                    {...field}
+                    id='endDate'
+                    label='서비스 종료일'
+                    inputVariant="outlined"
+                    format="yyyy-MM-dd"
+                    // onChange={(value) => setValue('endDate',value)}
+                    // renderInpu={(params) => <TextField {...params} variant="outlined"/>}
+                    className='flex-grow'
+                    />
+                  )}
+                />
               </MuiPickersUtilsProvider>
             </div>
             <div className=''>
               <Button variant="contained" type='button' color='secondary' className='mr-10'>확인</Button>
               <Button variant="contained" type='button'>취소</Button>
             </div>
-
           </form>
         </div>
       }
@@ -167,4 +405,5 @@ function Write() {
   );
 }
 
-export default Write;
+// export default Write;
+export default withReducer('clientmanager', reducer)(Write);

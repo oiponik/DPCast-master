@@ -9,7 +9,7 @@ const ClientlistConfig = {
   },
   routes: [
     {
-      path: '/apps/clientmanager/write',
+      path: '/apps/clientmanager/write/:clientId',
       component: lazy(() => import('./client/Write')),
     },
     {
